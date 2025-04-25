@@ -1,0 +1,63 @@
+- name: Add the prometheus user
+  ansible.builtin.user:
+    name: prometheus
+    create_home: no
+    shell: /bin/false
+    system: true
+
+- name: Download prometheus
+  ansible.builtin.get_url:
+    url: https://github.com/prometheus/prometheus/releases/download/v2.45.0/prometheus-2.45.0.linux-amd64.tar.gz
+    dest: /tmp/prometheus.tar.gz
+
+- name: Extract prometheus.tar.gz
+  ansible.builtin.unarchive:
+    src: /tmp/prometheus.tar.gz
+    dest: /tmp
+    remote_src: yes
+
+- name: Create a directory for prometheus
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: '0755'
+  loop: 
+    - /etc/prometheus
+    - /data
+
+- name: Copy binaries
+  ansible.builtin.copy:
+    src: /tmp/prometheus-2.45.0.linux-amd64/{{ item }}
+    dest: /usr/local/bin
+    remote_src: yes
+    mode: '0755'
+  loop:
+    - prometheus
+    - promtool
+
+- name: Copy consoles
+  ansible.builtin.copy:
+    src: /tmp/prometheus-2.45.0.linux-amd64/{{ item }}
+    dest: /etc/prometheus
+    remote_src: yes
+  loop:
+    - consoles/
+    - console_libraries/
+    - prometheus.yml
+
+- name: Template the prometheus.service file
+  ansible.builtin.template:
+    src: prometheus/templates/prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+
+- name: Make sure the prometheus service is enabled and running
+  ansible.builtin.systemd:
+    state: started
+    enabled: true 
+    name: prometheus
+  retries: 3
+  delay: 10
+  register: result
+  until: result is succeeded
